@@ -101,3 +101,22 @@ fn foreach() {
 }
 ```
 #### 6 vector
+
+
+#### 7 常量
+常量声明  
+语法: const name: data_type = value; 比如: const THREE_HOURS_IN_SECONDS: u32 = 60 * 60 * 3;  
+
+常量可以在任何范围声明，全局的，函数内都可以，声明在什么作用域就在什么作用域内有效  
+常量本身不可变，所以不能添加mut关键字  
+
+#### 8 静态变量
+静态变量在运行时分批内存，一般静态变量大写 静态变量并不是不可变的 生命周期是整个应用程序的运行周期  
+
+```rust
+static NUM: u32 = 16;
+
+fn main() {
+    println!("static num = {NUM}");
+}
+```
