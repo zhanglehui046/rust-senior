@@ -236,3 +236,176 @@ fn main() {
     println!("Modified: {}", borrowed_data_mut);
 }
 ```
+
+## 5 borrow rules summary(借用规则总结)
+### 5.1 对一个所有权变量进行多次引用或者借用
+#### 5.1.1 如果是不可变引用可以多次借用
+**结论: 如果是不可变引用可以多次借用, 并且在借用的有效期内可以使用前面的引用**  
+
+```rust
+// 对不可变引用，可以进行多次不可变借用
+fn multi_immutable_borrow() {
+    let m = 10;
+    let n = &m;
+    println!("{m:?}");
+    let x = &m;
+    let y = &m;
+    println!("{x:?}");
+    println!("{y:?}");
+    println!("{n:?}");
+}
+
+// 对可变引用，可以进行多次不可变借用
+fn multi_immutable_borrow() {
+    let mut m = 10;
+    let n = &m;
+    println!("{m:?}");
+    let x = &m;
+    let y = &m;
+    println!("{x:?}");
+    println!("{y:?}");
+    println!("{n:?}");
+}
+```
+
+#### 5.1.2 如果是可变引用可以多次借用
+**情况一: 如果只是借用，但是没有使用, 借用检查器不会认为有问题** 
+```rust
+fn multi_mutable_borrow() {
+    let mut m = 10;
+    let n = &mut m;
+    let x = &mut m;
+    // 编译不报错，因为Rust 编译器的借用检查器是以 使用借用 为准，而不是仅以借用的存在为依据
+}
+```
+
+**情况二: 如果使用了可变借用，则不允许多个可变借用** 
+- 如果可变借用生命周范围内，发生了其他可变借用，是不允许的。
+- 生命周范围取决于借用和使用之间范围的，比如这里:
+- 发生可变借用:  let n = &mut m; 
+- 使用可变借用:  println!("{n:?}")
+- 因此这期间发生可变借用，就会编译报错，因为在n生命周期范围内发生了可变借用
+```rust
+fn multi_mutable_borrow() {
+    let mut m = 10;
+    let n = &mut m;
+    let x = &mut m;
+    println!("{n:?}")
+    // 因为使用了可变借用，Rust 编译器的借用检查器会立即报错，因为同时存在两个活跃的可变借用，这违反了 Rust 的借用规则
+}
+```
+
+**情况三: 如果一个借用没有被实际使用，就不存在生命周期范围，编译器会优化掉它，不再检查它是否与其他借用冲突** 
+- 生命周范围取决于借用和使用之间范围的，比如这里:
+- 发生可变借用:  let n = &mut m; 但是后续没有使用，所以不存在生命周期范围，编译器会优化
+- 发生可变借用:  let x = &mut m;
+- 使用可变借用:  println!("{x:?}")
+- 这x生命周期范围内并没有发生其他可变借用，因此编译不会报错
+```rust
+fn multi_mutable_borrow() {
+    let mut m = 10;
+    let n = &mut m;
+    let x = &mut m;
+    println!("{x:?}"); // 编译器不报错
+}
+```
+
+### 5.2 将引用赋值给另外的变量
+#### 5.2.1 转移所有权
+```rust
+fn main() {
+    let mut a = 20;
+    // 第一次借用
+    let b = &mut a;
+    // 转移所有权，转移之后b不能使用
+    let c = b;
+    // 报错: value borrowed here after move
+    eprintln!("{b:?}")
+}
+```
+#### 5.2.1 共享引用
+```rust
+fn main() {
+    let mut a = 20;
+    // 第一次借用
+    let b = &mut a;
+    // b和c共享引用，转移之后b不能使用
+    let c: &mut i32 = b;
+    // Address of d: 0x16f46aeec
+    // Address of b: 0x16f46aeec
+    // 不会报错: value borrowed here after move， 因为这里不是转移所有权, 而是共享引用
+    println!("Address of c: {:p}", c as *mut i32); // 打印 c 指向的地址
+    println!("Address of b: {:p}", b as *mut i32); // 打印 b 指向的地址
+}
+```
+
+但是需要遵循多次引用的原则，则即在某个变量生命周期范围内，不能出现多次可变借用，以下代码就会报错:  
+```rust
+fn main() {
+    let mut a = 20;
+    // 第一次借用
+    let b = &mut a;
+    // b和c共享引用，转移之后b不能使用
+    let c: &mut i32 = b;
+    // 报错: ^ second mutable borrow occurs here,因为在b的生命周范围内，出现了c的可变借用，发生多次可变借用
+    println!("Address of b: {:p}", b as *mut i32); // 打印 b 指向的地址
+    println!("Address of c: {:p}", c as *mut i32); // 打印 c 指向的地址
+}
+```
+
+#### 5.2.3 再借用
+将某个引用解引用后再临时借给其他变量, 否则借用传入到函数中或者其它代码块，原始引用就在后续无法被使用了
+借用的本质是保留所有权，当某一个值不希望在函数传递时候丧失所有权，所以可以借用；但是如果借用我们也不希望在函数中丧失所有权，后续还想继续使用，所以有了再借用。
+总而言之，再借用具有以下一些功能:  
+- 提高灵活性: 允许临时将借用传递给其他作用域或函数，避免过早失去对原始引用的控制
+- 符合借用规则: 符合 Rust 的借用规则，确保在 Reborrow 的生命周期内原始引用被冻结，避免数据竞争  
+- 安全地嵌套借用: 在嵌套作用域中，确保原始引用和新的借用不会冲突
+- 支持闭包和函数调用的灵活传递: 允许在闭包或函数调用中传递可变引用，而不会失去原始引用的使用权
+
+**示例一: 冻结原始引用，可以继续使用原始引用**  
+```rust
+fn main() {
+    let mut a = 20;
+    // 第一次借用
+    let b = &mut a;
+    // b解引用后再借用给c,也就是将a在内存中的值重新借用给c，此时原始的引用b会被冻结
+    let c: &mut i32 = &mut *b;
+    // 既然b被冻结了，这里为什么不会报错？
+    println!("{b:?}");
+}
+```
+既然b被冻结了，这里为什么不会报错？  
+因为b虽然被冻结了，但是编译器会推断，后续没有使用c, 那么c的借用生命周期到此结束了，c生命周期结束，b就恢复了，因此可以使用
+
+
+**示例二: 冻结原始引用，不可以继续使用原始引用**  
+```rust
+fn main() {
+    let mut a = 20;
+    // 第一次借用
+    let b = &mut a;
+    // b解引用后再借用给c,也就是将a在内存中的值重新借用给c，此时原始的引用b会被冻结
+    let c: &mut i32 = &mut *b;
+    // b被冻结了，这里会报错？
+    println!("{b:?}"); // ^^^^^ immutable borrow occurs here
+    println!("{c:?}");
+}
+```
+
+生命周期开始: let c: &mut i32 = &mut *b;  
+生命周期结束: println!("{c:?}");   
+在这个过程使用了被冻结的b: println!("{b:?}");  
+因为发生再借用的c, 再其生命周期未结束之前，使用了b, 此时b还处于冻结状态,所以会报错  
+
+**示例三: 正确使用reborrow**  
+```rust
+fn main() {
+    let mut a = 20;
+    // 第一次借用
+    let b = &mut a;
+    // b解引用后再借用给c,也就是将a在内存中的值重新借用给c，此时原始的引用b会被冻结
+    let c: &mut i32 = &mut *b; // 生命周期开始
+    println!("{c:?}");  // 生命周期结束
+    println!("{b:?}"); // 解冻原始引用b, 可以继续使用了
+}
+```
